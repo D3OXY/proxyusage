@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+swift build -c release
+app="dist/Proxy Usage.app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cp .build/release/ProxyUsage "$app/Contents/MacOS/ProxyUsage"
+cp THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+cp assets/claude.png assets/codex.png "$app/Contents/Resources/"
+cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleExecutable</key><string>ProxyUsage</string>
+    <key>CFBundleIdentifier</key><string>dev.deoxy.proxyusage</string>
+    <key>CFBundleName</key><string>Proxy Usage</string>
+    <key>CFBundleDisplayName</key><string>Proxy Usage</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppTransportSecurity</key><dict>
+        <key>NSAllowsLocalNetworking</key><true/>
+    </dict>
+</dict></plist>
+PLIST
+codesign --force --sign - --identifier dev.deoxy.proxyusage "$app"
+codesign --verify --strict "$app"
+echo "Built $PWD/$app"
+
+if [[ "${1:-}" == "--install" ]]; then
+    destination="/Applications/Proxy Usage.app"
+    if [[ -e "$destination" ]]; then
+        echo "Quit Proxy Usage and remove $destination before reinstalling."
+        exit 1
+    fi
+    ditto "$app" "$destination"
+    echo "Installed $destination"
+fi
