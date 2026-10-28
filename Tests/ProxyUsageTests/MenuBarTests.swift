@@ -11,7 +11,7 @@ private let codex = AccountUsage(id: "codex", provider: .codex, name: "personal@
     UsageLimit(id: "weekly", title: "Weekly", usedPercent: 50, resetsAt: nil)
 ], error: nil)
 
-@Test @MainActor func fourPinnedLimitsFitIn108Points() throws {
+@Test @MainActor func fourPinnedLimitsFitIn60Points() throws {
     let pins = [claude, codex].flatMap { account in
         account.limits.map { PinnedLimit(id: account.pinID($0), label: "\(account.provider.shortName) \($0.title)") }
     }
@@ -21,8 +21,10 @@ private let codex = AccountUsage(id: "codex", provider: .codex, name: "personal@
     #expect(content.groups.map { $0.metrics.count } == [2, 2])
     #expect(content.groups.flatMap(\.metrics).map(\.value) == ["40%", "10%", "25%", "50%"])
     let image = try #require(MenuBarRenderer.image(for: content))
-    #expect(image.size == NSSize(width: 108, height: 18))
+    #expect(image.size.width <= 60)
+    #expect(image.size == NSSize(width: content.width, height: 18))
     #expect(image.isTemplate)
+    #expect(image.accessibilityDescription == content.summary)
 }
 
 @Test func unreadableAccountsKeepTheirPinnedPlaceWithADash() {
@@ -32,10 +34,32 @@ private let codex = AccountUsage(id: "codex", provider: .codex, name: "personal@
     #expect(content.groups.flatMap(\.metrics).map(\.value) == ["—", "—"])
 }
 
-@Test func secondPinUsesTheSameWidthAsOnePin() {
-    let first = PinnedLimit(id: "claude/session", label: "Claude 5h")
-    let second = PinnedLimit(id: "claude/weekly", label: "Claude Weekly")
-    let one = MenuBarContent(pins: [first], accounts: [claude], unavailable: false)
-    let two = MenuBarContent(pins: [first, second], accounts: [claude], unavailable: false)
-    #expect(one.width == two.width)
+@Test @MainActor func percentageColumnsStaySteadyBelow100() {
+    for count in [1, 2] {
+        let groups = [nil, 0, 9, 10, 99].map { used in
+            MenuBarContent.Group(provider: .claude, metrics: Array(repeating: .init(label: "Claude 5h", used: used), count: count))
+        }
+        for rows in [1, 2] {
+            #expect(Set(groups.map { $0.columnWidths(rows: rows) }).count == 1)
+        }
+    }
+}
+
+@Test @MainActor func fullUsageFitsWithoutWideningOtherColumns() {
+    let group = MenuBarContent.Group(provider: .claude, metrics: [0, 99, 100, nil, 9].map {
+        .init(label: "Claude limit", used: $0)
+    })
+    let widths = group.columnWidths(rows: 2)
+    #expect(widths.count == 3)
+    #expect(widths[0] == widths[2])
+    #expect(widths[1] > widths[0])
+    for (index, metric) in group.metrics.enumerated() {
+        let textWidth = (metric.value as NSString).size(withAttributes: [.font: group.font(rows: 2)]).width
+        #expect(widths[index / 2] >= ceil(textWidth))
+    }
+    let rowWidths = group.columnWidths(rows: 1)
+    for (index, metric) in group.metrics.enumerated() {
+        let textWidth = (metric.value as NSString).size(withAttributes: [.font: group.font(rows: 1)]).width
+        #expect(rowWidths[index] >= ceil(textWidth))
+    }
 }

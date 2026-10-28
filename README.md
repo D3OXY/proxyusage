@@ -4,7 +4,7 @@ A small macOS menu bar app for Claude Code and Codex accounts connected to one C
 
 Click the gauge in the menu bar to see each account's percent used and reset times in your device's timezone, with a countdown. Click a pin next to any limit to keep it in the menu bar. Unpinned limits stay in the popover. The footer counts down to the next update. Usage refreshes every five minutes; the manual refresh button restarts that countdown.
 
-Pinned limits use OpenUsage's compact layout: one monochrome provider mark and bare percentages used, stacked two high. Two pins per provider take 108 points total. Names and reset times stay in the popover or the menu bar tooltip. The popover uses quiet grouped cards, blue meters and native footer material.
+Pinned limits use one monochrome provider mark beside bare percentages used. With both providers pinned, Claude occupies the top row and Codex the bottom row. Two pins per provider take about 60 points total. A single provider stacks its values two high beside a larger mark. Columns reserve two digits to keep the width steady during usage updates, expanding when a value reaches 100%. Names and reset times stay in the popover or the menu bar tooltip. The popover uses quiet grouped cards, blue meters and native footer material.
 
 Settings holds the proxy URL, management key, and Start at login toggle. The key is stored in macOS Keychain under `dev.deoxy.proxyusage`, account `management-key`. The URL and pins live in UserDefaults. No provider OAuth tokens are downloaded or stored. The app only uses `auth-files` and `api-call` on CLIProxy's management API, with read requests to the providers' usage endpoints.
 

@@ -10,11 +10,30 @@ struct MenuBarContent: Equatable, Sendable {
     struct Group: Equatable, Sendable {
         let provider: Provider
         let metrics: [Metric]
-        var width: CGFloat { 20 + CGFloat((metrics.count + 1) / 2) * 30 }
+
+        @MainActor func font(rows: Int) -> NSFont {
+            .monospacedDigitSystemFont(ofSize: rows == 2 && metrics.count == 1 ? 11 : 9, weight: .semibold)
+        }
+
+        @MainActor func columnWidths(rows: Int) -> [CGFloat] {
+            stride(from: 0, to: metrics.count, by: rows).map { start in
+                // Reserve two digits so ordinary usage updates keep the strip steady.
+                let values = ["99%"] + metrics[start..<min(start + rows, metrics.count)].map(\.value)
+                return ceil(values.map { ($0 as NSString).size(withAttributes: [.font: font(rows: rows)]).width }.max() ?? 0) + 1
+            }
+        }
     }
 
     let groups: [Group]
-    var width: CGFloat { groups.reduce(0) { $0 + $1.width } + CGFloat(max(0, groups.count - 1)) * 8 }
+    var rows: Int { groups.count > 1 ? 1 : 2 }
+    var iconSize: CGFloat { groups.count > 1 ? 9 : 14 }
+    @MainActor var width: CGFloat {
+        let valuesWidth = groups.map { group in
+            let columns = group.columnWidths(rows: rows)
+            return columns.reduce(0, +) + CGFloat(max(0, columns.count - 1)) * 3
+        }.max() ?? 0
+        return iconSize + 2 + valuesWidth
+    }
     var summary: String {
         groups.flatMap(\.metrics).map { "\($0.label): \($0.value) used" }.joined(separator: "\n")
     }
@@ -33,7 +52,7 @@ struct MenuBarContent: Equatable, Sendable {
     }
 }
 
-// OpenUsage's text strip groups bare values beside one provider mark, with pairs stacked vertically.
+// Adapted from OpenUsage. Two providers share the strip vertically; a lone provider stacks its values.
 @MainActor enum MenuBarRenderer {
     private static var cached: (MenuBarContent, NSImage)?
 
@@ -42,23 +61,27 @@ struct MenuBarContent: Equatable, Sendable {
         if let cached, cached.0 == content { return cached.1 }
         let image = NSImage(size: NSSize(width: content.width, height: 18))
         image.lockFocus()
-        var x: CGFloat = 0
-        for group in content.groups {
-            group.provider.image.draw(in: NSRect(x: x, y: 1, width: 16, height: 16))
-            for (index, metric) in group.metrics.enumerated() {
-                let single = group.metrics.count == 1
-                let paragraph = NSMutableParagraphStyle()
-                paragraph.alignment = .right
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: single ? 11 : 9, weight: .semibold),
-                    .foregroundColor: NSColor.black,
-                    .paragraphStyle: paragraph
-                ]
-                let y: CGFloat = single ? 1 : index % 2 == 0 ? 8 : -1
-                NSAttributedString(string: metric.value, attributes: attributes)
-                    .draw(in: NSRect(x: x + 20 + CGFloat(index / 2) * 30, y: y, width: 30, height: single ? 16 : 11))
+        for (index, group) in content.groups.enumerated() {
+            let providerY: CGFloat = content.rows == 1 ? CGFloat(1 - index) * 9 : 2
+            group.provider.image.draw(in: NSRect(x: 0, y: providerY, width: content.iconSize, height: content.iconSize))
+            let single = content.rows == 2 && group.metrics.count == 1
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .right
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: group.font(rows: content.rows),
+                .foregroundColor: NSColor.black,
+                .paragraphStyle: paragraph
+            ]
+            var columnX = content.iconSize + 2
+            for (column, width) in group.columnWidths(rows: content.rows).enumerated() {
+                for row in 0..<min(content.rows, group.metrics.count - column * content.rows) {
+                    let metric = group.metrics[column * content.rows + row]
+                    let y: CGFloat = content.rows == 1 ? providerY - 1 : single ? 1 : row == 0 ? 8 : -1
+                    NSAttributedString(string: metric.value, attributes: attributes)
+                        .draw(in: NSRect(x: columnX, y: y, width: width, height: single ? 16 : 11))
+                }
+                columnX += width + 3
             }
-            x += group.width + 8
         }
         image.unlockFocus()
         image.isTemplate = true
