@@ -21,6 +21,7 @@ struct UsageView: View {
                 ScrollView {
                     UsageDashboard(store: store)
                 }
+                .scrollIndicators(.hidden)
                 .frame(height: dashboardHeight)
             }
             footer
