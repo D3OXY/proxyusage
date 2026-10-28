@@ -4,6 +4,7 @@ struct MenuBarContent: Equatable, Sendable {
     struct Metric: Equatable, Sendable {
         let label: String
         let used: Int?
+        let window: String
         var value: String { used.map { "\($0)%" } ?? "—" }
     }
 
@@ -27,12 +28,41 @@ struct MenuBarContent: Equatable, Sendable {
     let groups: [Group]
     var rows: Int { groups.count > 1 ? 1 : 2 }
     var iconSize: CGFloat { groups.count > 1 ? 9 : 14 }
+
+    var alignedMetrics: [[Metric?]] {
+        var windows: [String] = []
+        for group in groups {
+            var pending = windows
+            for metric in group.metrics {
+                if let index = pending.firstIndex(of: metric.window) {
+                    pending.remove(at: index)
+                } else {
+                    windows.append(metric.window)
+                }
+            }
+        }
+        return groups.map { group in
+            var pending = group.metrics
+            return windows.map { window in
+                guard let index = pending.firstIndex(where: { $0.window == window }) else { return nil }
+                return pending.remove(at: index)
+            }
+        }
+    }
+
+    @MainActor var columnWidths: [CGFloat] {
+        guard rows == 1 else { return groups.first?.columnWidths(rows: rows) ?? [] }
+        let aligned = alignedMetrics
+        return (aligned.first ?? []).indices.map { column in
+            let values = ["99%"] + aligned.compactMap { $0[column]?.value }
+            let font = groups[0].font(rows: rows)
+            return ceil(values.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0) + 1
+        }
+    }
+
     @MainActor var width: CGFloat {
-        let valuesWidth = groups.map { group in
-            let columns = group.columnWidths(rows: rows)
-            return columns.reduce(0, +) + CGFloat(max(0, columns.count - 1)) * 3
-        }.max() ?? 0
-        return iconSize + 2 + valuesWidth
+        let columns = columnWidths
+        return iconSize + 2 + columns.reduce(0, +) + CGFloat(max(0, columns.count - 1)) * 3
     }
     var summary: String {
         groups.flatMap(\.metrics).map { "\($0.label): \($0.value) used" }.joined(separator: "\n")
@@ -45,7 +75,11 @@ struct MenuBarContent: Equatable, Sendable {
                 let source = account?.provider ?? Provider.allCases.first { pin.label.hasPrefix($0.shortName) }
                 guard source == provider else { return nil }
                 let limit = account?.limits.first { account?.pinID($0) == pin.id }
-                return Metric(label: pin.label, used: unavailable ? nil : limit?.used)
+                let accountPrefix = account.map { "\(provider.shortName) \($0.name) " }
+                let prefix = accountPrefix.flatMap { pin.label.hasPrefix($0) ? $0 : nil } ?? "\(provider.shortName) "
+                let savedTitle = pin.label.hasPrefix(prefix) ? String(pin.label.dropFirst(prefix.count)) : pin.label
+                let window = (limit?.title ?? savedTitle).replacingOccurrences(of: "5-hour", with: "5h")
+                return Metric(label: pin.label, used: unavailable ? nil : limit?.used, window: window)
             }
             return metrics.isEmpty ? nil : Group(provider: provider, metrics: metrics)
         }
@@ -61,7 +95,10 @@ struct MenuBarContent: Equatable, Sendable {
         if let cached, cached.0 == content { return cached.1 }
         let image = NSImage(size: NSSize(width: content.width, height: 18))
         image.lockFocus()
+        let aligned = content.alignedMetrics
+        let widths = content.columnWidths
         for (index, group) in content.groups.enumerated() {
+            let metrics: [MenuBarContent.Metric?] = content.rows == 1 ? aligned[index] : group.metrics.map { $0 }
             let providerY: CGFloat = content.rows == 1 ? CGFloat(1 - index) * 9 : 2
             group.provider.image.draw(in: NSRect(x: 0, y: providerY, width: content.iconSize, height: content.iconSize))
             let single = content.rows == 2 && group.metrics.count == 1
@@ -73,9 +110,9 @@ struct MenuBarContent: Equatable, Sendable {
                 .paragraphStyle: paragraph
             ]
             var columnX = content.iconSize + 2
-            for (column, width) in group.columnWidths(rows: content.rows).enumerated() {
-                for row in 0..<min(content.rows, group.metrics.count - column * content.rows) {
-                    let metric = group.metrics[column * content.rows + row]
+            for (column, width) in widths.enumerated() {
+                for row in 0..<min(content.rows, metrics.count - column * content.rows) {
+                    guard let metric = metrics[column * content.rows + row] else { continue }
                     let y: CGFloat = content.rows == 1 ? providerY - 1 : single ? 1 : row == 0 ? 8 : -1
                     NSAttributedString(string: metric.value, attributes: attributes)
                         .draw(in: NSRect(x: columnX, y: y, width: width, height: single ? 16 : 11))
