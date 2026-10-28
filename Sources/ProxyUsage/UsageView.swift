@@ -36,7 +36,7 @@ struct UsageView: View {
 
     private var dashboardHeight: CGFloat {
         let rows = store.accounts.reduce(0) { $0 + max(1, $1.limits.count) }
-        let height = CGFloat(rows) * 71 + CGFloat(store.accounts.count) * 65 + 24
+        let height = CGFloat(rows) * 87 + CGFloat(store.accounts.count) * 65 + 24
         return min(520, max(150, height + (store.error == nil ? 0 : 70)))
     }
 
@@ -141,7 +141,7 @@ struct UsageDashboard: View {
     }
 }
 
-// Adapted from OpenUsage's WidgetRowView: label, capsule meter, remaining amount and reset time.
+// Adapted from OpenUsage's WidgetRowView: label, capsule meter, used amount and reset time.
 private struct LimitRow: View {
     let limit: UsageLimit
     let pinned: Bool
@@ -169,15 +169,21 @@ private struct LimitRow: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule().fill(.quaternary)
-                    Capsule().fill(color).frame(width: geometry.size.width * Double(limit.remaining) / 100)
+                    Capsule().fill(color).frame(width: geometry.size.width * Double(limit.used) / 100)
                 }
             }
             .frame(height: 5).accessibilityHidden(true)
-            HStack {
-                Text("\(limit.remaining)% left").monospacedDigit()
+            HStack(alignment: .top) {
+                Text("\(limit.used)% used").monospacedDigit()
                 Spacer()
                 TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Text(limit.resetText(now: context.date)).foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(limit.resetTimeText(now: context.date))
+                        if limit.resetsAt != nil {
+                            Text(limit.resetText(now: context.date)).monospacedDigit()
+                        }
+                    }
+                    .foregroundStyle(.secondary)
                 }
                 .help(limit.resetsAt?.formatted(date: .complete, time: .shortened) ?? "No reset time reported")
             }

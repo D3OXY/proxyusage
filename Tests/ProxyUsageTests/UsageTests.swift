@@ -18,7 +18,7 @@ import Testing
     """#.utf8)
     let (_, limits) = try UsageParser.parse(data, provider: .claude)
     #expect(limits.map(\.title) == ["5-hour", "Weekly", "Weekly · Opus", "Weekly · Sonnet", "Extra usage · monthly"])
-    #expect(limits.map(\.remaining) == [79, 57, 95, 88, 75])
+    #expect(limits.map(\.used) == [21, 43, 5, 12, 25])
     #expect(limits[0].resetsAt != nil)
 }
 
@@ -38,17 +38,41 @@ import Testing
     let (plan, limits) = try UsageParser.parse(data, provider: .codex, now: now)
     #expect(plan == "Pro")
     #expect(limits.map(\.title) == ["5-hour", "Monthly", "Code review · Weekly", "GPT · 5-hour"])
-    #expect(limits.map(\.remaining) == [76, 20, 95, 0])
+    #expect(limits.map(\.used) == [24, 80, 5, 100])
     #expect(limits[1].resetsAt == now.addingTimeInterval(600))
 }
 
 @Test func missingWindowsStayMissingAndPercentagesAreClamped() throws {
     let (_, limits) = try UsageParser.parse(Data(#"{"rate_limit":null}"#.utf8), provider: .codex)
     #expect(limits.isEmpty)
-    #expect(UsageLimit(id: "a", title: "a", usedPercent: 101, resetsAt: nil).remaining == 0)
-    #expect(UsageLimit(id: "a", title: "a", usedPercent: -5, resetsAt: nil).remaining == 100)
+    #expect(UsageLimit(id: "a", title: "a", usedPercent: 101, resetsAt: nil).used == 100)
+    #expect(UsageLimit(id: "a", title: "a", usedPercent: -5, resetsAt: nil).used == 0)
     let now = Date.now
     #expect(UsageLimit(id: "a", title: "a", usedPercent: 90, resetsAt: now.addingTimeInterval(-1)).resetText(now: now) == "Reset due · refresh")
+}
+
+@Test func resetTimeUsesTheDeviceTimeZoneAndIncludesTheDateForOtherDays() throws {
+    let now = try #require(ISO8601DateFormatter().date(from: "2030-01-01T19:00:00Z"))
+    let reset = now.addingTimeInterval(3600)
+    let limit = UsageLimit(id: "session", title: "5-hour", usedPercent: 20, resetsAt: reset)
+    let india = try #require(TimeZone(identifier: "Asia/Kolkata"))
+    let pacific = try #require(TimeZone(identifier: "America/Los_Angeles"))
+    let locale = Locale(identifier: "en_US")
+    #expect(limit.resetTimeText(now: now, timeZone: india, locale: locale) == "Resets at 1:30\u{202F}AM")
+    #expect(limit.resetTimeText(now: now, timeZone: pacific, locale: locale) == "Resets at 12:00\u{202F}PM")
+    let earlier = now.addingTimeInterval(-3600)
+    #expect(limit.resetTimeText(now: earlier, timeZone: india, locale: locale) == "Resets Jan 2, 2030 at 1:30\u{202F}AM")
+}
+
+@Test func resetCountdownHandlesMinuteHourAndDayBoundaries() {
+    let now = Date(timeIntervalSince1970: 0)
+    for (seconds, expected) in [(1.0, "in 1 Min"), (3599, "in 1 Hr"), (3601, "in 1 Hr 1 Min"),
+                                (8100, "in 2 Hr 15 Min"), (86400, "in 1 Day"), (90000, "in 1 Day 1 Hr")] {
+        let limit = UsageLimit(id: "session", title: "5-hour", usedPercent: 20, resetsAt: now.addingTimeInterval(seconds))
+        #expect(limit.resetText(now: now) == expected)
+    }
+    let missing = UsageLimit(id: "extra", title: "Extra", usedPercent: 20, resetsAt: nil)
+    #expect(missing.resetTimeText(now: now) == "Reset not reported")
 }
 
 @Test func proxyURLAcceptsDashboardLinksAndRejectsCredentials() throws {
@@ -67,9 +91,9 @@ import Testing
     let claude = await client.usage(for: accounts[0])
     let codex = await client.usage(for: accounts[1])
     #expect(claude.error == nil)
-    #expect(claude.limits.first?.remaining == 70)
+    #expect(claude.limits.first?.used == 30)
     #expect(codex.error == nil)
-    #expect(codex.limits.first?.remaining == 80)
+    #expect(codex.limits.first?.used == 20)
 }
 
 @Test func providerFailureStaysOnItsAccount() async throws {

@@ -16,9 +16,10 @@ private let codex = AccountUsage(id: "codex", provider: .codex, name: "personal@
         account.limits.map { PinnedLimit(id: account.pinID($0), label: "\(account.provider.shortName) \($0.title)") }
     }
     let content = MenuBarContent(pins: pins, accounts: [claude, codex], unavailable: false)
+    #expect(content.summary.contains("Claude 5-hour: 40% used"))
     #expect(content.groups.count == 2)
     #expect(content.groups.map { $0.metrics.count } == [2, 2])
-    #expect(content.groups.flatMap(\.metrics).map(\.value) == ["60%", "90%", "75%", "50%"])
+    #expect(content.groups.flatMap(\.metrics).map(\.value) == ["40%", "10%", "25%", "50%"])
     let image = try #require(MenuBarRenderer.image(for: content))
     #expect(image.size == NSSize(width: 108, height: 18))
     #expect(image.isTemplate)

@@ -26,17 +26,27 @@ struct UsageLimit: Identifiable, Sendable {
     let usedPercent: Double
     let resetsAt: Date?
 
-    var remaining: Int { Int((100 - min(100, max(0, usedPercent))).rounded()) }
+    var used: Int { Int(min(100, max(0, usedPercent)).rounded()) }
+
+    func resetTimeText(now: Date, timeZone: TimeZone = .autoupdatingCurrent, locale: Locale = .autoupdatingCurrent) -> String {
+        guard let resetsAt else { return "Reset not reported" }
+        var calendar = Calendar.autoupdatingCurrent
+        calendar.timeZone = timeZone
+        let today = calendar.isDate(resetsAt, inSameDayAs: now)
+        let style = Date.FormatStyle(date: today ? .omitted : .abbreviated, time: .shortened,
+                                     locale: locale, calendar: calendar, timeZone: timeZone)
+        return "Resets \(today ? "at " : "")\(resetsAt.formatted(style))"
+    }
 
     func resetText(now: Date) -> String {
         guard let resetsAt else { return "Reset not reported" }
         let seconds = resetsAt.timeIntervalSince(now)
         guard seconds > 0 else { return "Reset due · refresh" }
         let minutes = max(1, Int(ceil(seconds / 60)))
-        if minutes < 60 { return "Resets in \(minutes)m" }
+        if minutes < 60 { return "in \(minutes) Min" }
         let hours = minutes / 60
-        if hours < 24 { return "Resets in \(hours)h \(minutes % 60)m" }
-        return "Resets in \(hours / 24)d \(hours % 24)h"
+        if hours < 24 { return "in \(hours) Hr" + (minutes % 60 == 0 ? "" : " \(minutes % 60) Min") }
+        return "in \(hours / 24) \(hours / 24 == 1 ? "Day" : "Days")" + (hours % 24 == 0 ? "" : " \(hours % 24) Hr")
     }
 }
 

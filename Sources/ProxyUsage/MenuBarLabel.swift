@@ -3,8 +3,8 @@ import AppKit
 struct MenuBarContent: Equatable, Sendable {
     struct Metric: Equatable, Sendable {
         let label: String
-        let remaining: Int?
-        var value: String { remaining.map { "\($0)%" } ?? "—" }
+        let used: Int?
+        var value: String { used.map { "\($0)%" } ?? "—" }
     }
 
     struct Group: Equatable, Sendable {
@@ -16,7 +16,7 @@ struct MenuBarContent: Equatable, Sendable {
     let groups: [Group]
     var width: CGFloat { groups.reduce(0) { $0 + $1.width } + CGFloat(max(0, groups.count - 1)) * 8 }
     var summary: String {
-        groups.flatMap(\.metrics).map { "\($0.label): \($0.value) left" }.joined(separator: "\n")
+        groups.flatMap(\.metrics).map { "\($0.label): \($0.value) used" }.joined(separator: "\n")
     }
 
     init(pins: [PinnedLimit], accounts: [AccountUsage], unavailable: Bool) {
@@ -26,7 +26,7 @@ struct MenuBarContent: Equatable, Sendable {
                 let source = account?.provider ?? Provider.allCases.first { pin.label.hasPrefix($0.shortName) }
                 guard source == provider else { return nil }
                 let limit = account?.limits.first { account?.pinID($0) == pin.id }
-                return Metric(label: pin.label, remaining: unavailable ? nil : limit?.remaining)
+                return Metric(label: pin.label, used: unavailable ? nil : limit?.used)
             }
             return metrics.isEmpty ? nil : Group(provider: provider, metrics: metrics)
         }
